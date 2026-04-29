@@ -9,7 +9,15 @@ set(QCBOR_DIR_HINT "" CACHE PATH "Hint path for QCBOR directory")
 
 find_package(QCBOR REQUIRED)
 if(NOT QCBOR_FOUND)
-	message(FATAL_ERROR "QCBOR not found")
+	message(WARNING "QCBOR not found, falling back to libcbor")
+	set(USE_LIBCBOR TRUE)
+else()
+	set(USE_LIBCBOR FALSE)
+endif()
+
+if(USE_LIBCBOR)
+	add_compile_definitions(${PROJECT_NAME}
+		PRIVATE -DUSE_LIBCBOR)
 endif()
 
 include_directories(${QCBOR_INCLUDE_DIRS})
@@ -84,9 +92,16 @@ target_include_directories(${PROJECT_NAME}
 	PRIVATE idl
 )
 
-target_link_libraries(${PROJECT_NAME}
-	PRIVATE minkadaptor
-	PRIVATE ${QCBOR_LIBRARIES}
-)
+if(NOT USE_LIBCBOR)
+	target_link_libraries(${PROJECT_NAME}
+		PRIVATE minkadaptor
+		PRIVATE ${QCBOR_LIBRARIES}
+	)
+else()
+	target_link_libraries(${PROJECT_NAME}
+		PRIVATE minkadaptor
+		PRIVATE cbor
+	)
+endif()
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_BINDIR}")

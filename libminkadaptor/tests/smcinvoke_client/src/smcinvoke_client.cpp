@@ -29,7 +29,12 @@
 #include "MinkCom.h"
 #include "tzecotestapp_uids.h"
 #include "tzt.h"
+#ifndef USE_LIBCBOR
 #include <qcbor/qcbor.h>
+#else
+#include <cbor.h>
+#include <string.h>
+#endif
 
 int32_t create_and_assign_mem_obj(Object, Object *);
 
@@ -61,6 +66,7 @@ static int64_t get_time_in_ms(void)
 	return (int64_t)(tv.tv_sec * 1000) + (int64_t)(tv.tv_usec / 1000);
 }
 
+#ifndef USE_LIBCBOR
 static int realloc_useful_buf(UsefulBuf *buf)
 {
 	void *ptr;
@@ -75,12 +81,29 @@ static int realloc_useful_buf(UsefulBuf *buf)
 
 	return 0;
 }
+#else
+static int alloc_cbor_mutable_data(cbor_mutable_data *buffer, size_t* buffer_size)
+{
+	void* ptr;
+
+	ptr = malloc(CREDENTIALS_BUF_SIZE_INC * sizeof(unsigned char));
+	if (!ptr)
+		return -1;
+
+	*buffer = (unsigned char*)ptr;
+	*buffer_size += CREDENTIALS_BUF_SIZE_INC;
+	memset(*buffer, 0, *buffer_size);
+
+	return 0;
+}
+#endif
 
 /* Get credentials. */
 static void* get_self_creds(size_t *buf_len)
 {
-	QCBOREncodeContext e_ctx;
 	void *credential_buf = nullptr;
+#ifndef USE_LIBCBOR
+	QCBOREncodeContext e_ctx;
 	UsefulBufC enc;
 	UsefulBuf creds_useful_buf = { NULL, 0 };
 
@@ -104,6 +127,49 @@ static void* get_self_creds(size_t *buf_len)
 	*buf_len = enc.len;
 
 	return credential_buf;
+#else
+	cbor_item_t *creds_map = NULL;
+	struct cbor_pair map_pair;
+	cbor_mutable_data buffer = NULL;
+	size_t buffer_size = 0;
+
+	if (alloc_cbor_mutable_data(&buffer, &buffer_size))
+		goto exit;
+
+	creds_map = cbor_new_definite_map(2);
+	if (creds_map == NULL)
+		goto exit;
+
+	map_pair.key = cbor_build_uint8(attr_uid);
+	map_pair.value = cbor_build_uint32((uint64_t)getuid());
+	if(!cbor_map_add(creds_map, map_pair)) {
+		cbor_decref(&map_pair.key);
+		cbor_decref(&map_pair.value);
+		goto exit;
+	}
+
+	map_pair.key = cbor_build_uint8(attr_system_time);
+	map_pair.value = cbor_build_uint64((uint64_t)get_time_in_ms());
+	if(!cbor_map_add(creds_map, map_pair)) {
+		cbor_decref(&map_pair.key);
+		cbor_decref(&map_pair.value);
+		goto exit;
+	}
+
+	buffer_size = cbor_serialize_map(creds_map, buffer, buffer_size);
+	if (buffer_size == 0)
+		goto exit;
+
+	/* Mark success of encoding */
+	credential_buf = (void *)buffer;
+	*buf_len = buffer_size;
+exit:
+	if(credential_buf == NULL && buffer)
+		free(buffer);
+	if(creds_map)
+		cbor_decref(&creds_map);
+	return credential_buf;
+#endif
 }
 
 int32_t create_and_assign_mem_obj(Object root, Object *argptr)

@@ -57,6 +57,13 @@ The following CMake options are available for configuring this package:
 
 `-DBUILD_MINKTEEC=ON` - Build Mink TEEC library
 
+Incase, QCBOR dependency is unment, the build system falls back to use libcbor [here](https://github.com/PJK/libcbor).
+
+Libcbor can be installed on Ubuntu/Debian using:
+```
+sudo apt-get install libcbor-dev
+```
+
 ## Tests
 List of available tests for each module are available in the module's README file.
 
